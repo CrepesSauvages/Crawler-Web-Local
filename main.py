@@ -148,11 +148,14 @@ class CrawlerApp:
         self.continue_crawl_button = ttk.Button(frame, text="Continuer Crawler", command=self.continue_crawler)
         self.continue_crawl_button.grid(row=1, column=2, padx=5, pady=5)
 
-        self.queue_button = ttk.Button(frame, text="Visualiser la file d'attente", command=self.view_queue)
-        self.queue_button.grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+        self.view_queue_button = ttk.Button(frame, text="File d'attente (Voir nombre)", command=self.view_queue_count)
+        self.view_queue_button.grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+
+        self.view_queue_urls_button = ttk.Button(frame, text="File d'attente (Voir URLs)", command=self.view_queue_urls)
+        self.view_queue_urls_button.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
 
         self.count_button = ttk.Button(frame, text="Nombre de pages web enregistrées", command=self.count_webpages)
-        self.count_button.grid(row=2, column=1, padx=5, pady=5)
+        self.count_button.grid(row=2, column=2, padx=5, pady=5)
 
         self.search_label = ttk.Label(frame, text="Rechercher une page web:")
         self.search_label.grid(row=3, column=0, sticky=tk.W)
@@ -173,7 +176,7 @@ class CrawlerApp:
         self.quit_button.grid(row=4, column=2, padx=5, pady=5)
 
         self.log_text = tk.Text(self.root, height=10, width=80)
-        self.log_text.grid(row=1, column=0, padx=10, pady=10, sticky=(tk.W, tk.E))
+        self.log_text.grid(row=1, column=0, padx=10, pady=10, columnspan=3, sticky=(tk.W, tk.E))
 
     def start_new_crawler(self):
         start_url = self.start_url_entry.get()
@@ -188,11 +191,14 @@ class CrawlerApp:
         else:
             self.log_text.insert(tk.END, "La file d'attente est vide. Veuillez démarrer un nouveau crawler.\n")
 
-    def view_queue(self):
-        self.log_text.insert(tk.END, "File d'attente:\n")
+    def view_queue_count(self):
+        self.log_text.insert(tk.END, f"Nombre d'URLs dans la file d'attente: {len(queue)}\n")
+
+    def view_queue_urls(self):
+        self.log_text.insert(tk.END, "URLs dans la file d'attente:\n")
         for url in queue:
-            self.log_text.insert(tk.END, f"- {url}\n")
-    
+            self.log_text.insert(tk.END, f"{url}\n")
+
     def count_webpages(self):
         self.log_text.insert(tk.END, f"Nombre de pages web enregistrées: {metadata['count']}\n")
 
@@ -206,7 +212,7 @@ class CrawlerApp:
                 break
         if not found:
             self.log_text.insert(tk.END, "Aucune page web trouvée avec ce terme de recherche.\n")
-    
+
     def clean_data(self):
         global queue, visited, metadata, webpages, current_info_file
         queue = []
