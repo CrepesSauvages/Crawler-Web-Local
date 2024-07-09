@@ -10,9 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 
 
-from src.plugins.emails_plugins import extract_emails, search_emails_in_json, save_emails
-from src.plugins.is_valid_url import is_valid_url
-
+from plugins.emails_plugins import *
 
 # Créer le dossier data et sous-dossier webpages s'ils n'existent pas
 if not os.path.exists('data'):
@@ -63,6 +61,16 @@ def get_current_info_file():
 current_info_file = get_current_info_file()
 webpages = load_json_file(current_info_file) or {}
 
+# Fonction pour extraire les emails d'une page web
+def extract_emails(soup):
+    emails = set()
+    # Utiliser une expression régulière pour trouver les emails
+    email_regex = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+    for text in soup.stripped_strings:
+        for match in email_regex.findall(text):
+            emails.add(match)
+    return emails
+
 # Fonction pour extraire les informations d'une page web
 def extract_info(url):
     try:
@@ -85,6 +93,33 @@ def extract_info(url):
     except Exception as e:
         print(f"Erreur lors de l'extraction de {url}: {e}")
         return None
+
+# Fonction pour sauvegarder les emails dans un fichier texte
+def save_emails(emails):
+    try:
+        with open('data/emails.txt', 'a') as file:
+            for email in emails:
+                file.write(email + '\n')
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde des emails: {e}")
+
+# Fonction pour chercher et collecter les emails dans les fichiers JSON
+def search_emails_in_json():
+    try:
+        emails = set()
+        for filename in os.listdir('data/webpages'):
+            if filename.endswith('.json'):
+                filepath = os.path.join('data/webpages', filename)
+                with open(filepath, 'r') as file:
+                    data = json.load(file)
+                    for info in data.values():
+                        if 'emails' in info:
+                            emails.update(info['emails'])
+        return list(emails)
+    except Exception as e:
+        print(f"Erreur lors de la recherche des emails dans les fichiers JSON: {e}")
+        return []
+
 # Fonction pour traiter une URL
 def process_url(url):
     global current_info_file
@@ -118,6 +153,11 @@ def process_url(url):
                     print(f"Ajouté à la file d'attente: {absolute_link}")
                     
             save_json_file('data/queue.json', queue)
+
+# Vérifier si l'URL est valide
+def is_valid_url(url):
+    parsed = urlparse(url)
+    return bool(parsed.scheme) and bool(parsed.netloc)
 
 # Fonction pour démarrer le crawling
 def crawler(start_url=None):
