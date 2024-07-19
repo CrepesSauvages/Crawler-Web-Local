@@ -2,122 +2,85 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import requests
-from bs4 import BeautifulSoup
 import json
 import os
-import re
-from urllib.parse import urljoin, urlparse
+import logging
+import argparse
+
+# Sys
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+import config
+from shared import visited, metadata, webpages, queue
+
+# Emails
+from module.emails.extract_emails import extract_emails
+from module.emails.save_emails import save_emails
+from module.emails.search_emails_in_json import search_emails_in_json
 
 
+# Core
+from module.core.Json_File import load_json_file, save_json_file, initialize_json_file
+from module.core.extract_info import extract_info
+from module.core.process_url import process_url
 
-from src.plugins.emails_plugins import extract_emails, search_emails_in_json, save_emails
-from src.plugins.is_valid_url import is_valid_url
+# Utils
+from module.utils.current_Info_File import get_current_info_file
+from module.utils.is_valid_url import is_valid_url
+from module.utils.log import logError
+
+def initiate():
+    if not os.path.exists("logs/"):
+        os.makedirs("logs/")
+    if not os.path.exists('data'):
+        os.makedirs('data')
+    if not os.path.exists('data/webpages'):
+        os.makedirs('data/webpages')
+    if not os.path.exists('data/queue.json'):
+        with open('data/queue.json', 'w') as f:
+            json.dump([], f)
+    if not os.path.exists('data/visited.json'):
+        with open('data/visited.json', 'w') as f:
+            json.dump([], f)
+    if not os.path.exists('data/metadata.json'):
+        with open('data/metadata.json', 'w') as f:
+            json.dump({"count": 0, "file_index": 1}, f)
+    if not os.path.exists('data/webpages/info1.json'):
+        with open('data/webpages/info1.json', 'w') as f:
+            json.dump({}, f)
+    logging.basicConfig(
+        filename=config.Log_Path,
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    initialize_json_file('data/queue.json', [])
+    initialize_json_file('data/visited.json', [])
+    initialize_json_file('data/metadata.json', {"count": 0, "file_index": 1})
+    initialize_json_file('data/webpages/info1.json', {})
+
+    queue = load_json_file('data/queue.json') or []
+    visited = load_json_file('data/visited.json') or []
+    metadata = load_json_file('data/metadata.json') or {"count": 0, "file_index": 1}
+    current_info_file = get_current_info_file(metadata)
+    webpages = load_json_file(current_info_file) or {}
+
+    parser = argparse.ArgumentParser(
+        prog="Crawler",
+        description="Crawler Web For Save Data WebSite"
+    )
+
+    parser.add_argument(
+        "-d",
+        "--delete",
+        nargs="*",
+        type=str,
+        help="Delete Data"
+    )
+    args = parser.parse_args()
+    config.delete = args.delete
 
 
-# Créer le dossier data et sous-dossier webpages s'ils n'existent pas
-if not os.path.exists('data'):
-    os.makedirs('data')
-if not os.path.exists('data/webpages'):
-    os.makedirs('data/webpages')
-
-# Initialiser les fichiers JSON s'ils n'existent pas
-def initialize_json_file(filename, initial_data):
-    if not os.path.exists(filename):
-        with open(filename, 'w') as file:
-            json.dump(initial_data, file)
-
-initialize_json_file('data/queue.json', [])
-initialize_json_file('data/visited.json', [])
-initialize_json_file('data/metadata.json', {"count": 0, "file_index": 1})
-initialize_json_file('data/webpages/info1.json', {})
-
-# Charger les données depuis les fichiers JSON
-def load_json_file(filename):
-    try:
-        with open(filename, 'r') as file:
-            return json.load(file)
-    except json.JSONDecodeError as e:
-        print(f"Erreur de décodage JSON dans le fichier {filename}: {e}")
-        return None
-    except Exception as e:
-        print(f"Erreur lors du chargement du fichier {filename}: {e}")
-        return None
-
-def save_json_file(filename, data):
-    try:
-        with open(filename, 'w') as file:
-            json.dump(data, file, indent=4)
-            file.flush()  # Force l'écriture immédiate sur le disque
-            os.fsync(file.fileno())  # Synchronisation avec le disque pour s'assurer que toutes les données sont écrites
-    except Exception as e:
-        print(f"Erreur lors de la sauvegarde du fichier {filename}: {e}")
-
-queue = load_json_file('data/queue.json') or []
-visited = load_json_file('data/visited.json') or []
-metadata = load_json_file('data/metadata.json') or {"count": 0, "file_index": 1}
-
-# Déterminer le nom du fichier info.json courant
-def get_current_info_file():
-    return f"data/webpages/info{metadata['file_index']}.json"
-
-current_info_file = get_current_info_file()
-webpages = load_json_file(current_info_file) or {}
-
-# Fonction pour extraire les informations d'une page web
-def extract_info(url):
-    try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Extraire les titres, sous-titres, texte, liens, et emails
-        titles = [title.get_text() for title in soup.find_all(['h1', 'h2', 'h3'])]
-        paragraphs = [p.get_text() for p in soup.find_all('p')]
-        links = [a['href'] for a in soup.find_all('a', href=True)]
-        emails = extract_emails(soup)
-
-        return {
-            'url': url,
-            'titles': titles,
-            'paragraphs': paragraphs,
-            'links': links,
-            'emails': list(emails)
-        }
-    except Exception as e:
-        print(f"Erreur lors de l'extraction de {url}: {e}")
-        return None
-# Fonction pour traiter une URL
-def process_url(url):
-    global current_info_file
-    if url not in visited:
-        info = extract_info(url)
-        if info:
-            metadata['count'] += 1
-            index = str(metadata['count'])
-            webpages[index] = info
-            visited.append(url)
-
-            # Ajouter des messages de débogage pour afficher l'URL traitée
-            print(f"Traitement de l'URL: {url}")
-
-            # Sauvegarder les données et vérifier si un nouveau fichier info doit être créé
-            if metadata['count'] % 50 == 0:
-                save_json_file(current_info_file, webpages)
-                metadata['file_index'] += 1
-                current_info_file = get_current_info_file()
-                webpages.clear()
-            
-            save_json_file(current_info_file, webpages)
-            save_json_file('data/metadata.json', metadata)
-            save_json_file('data/visited.json', visited)
-            
-            base_url = url.rsplit('/', 1)[0]
-            for link in info['links']:
-                absolute_link = urljoin(base_url, link)
-                if is_valid_url(absolute_link) and absolute_link not in visited and absolute_link not in queue:
-                    queue.append(absolute_link)
-                    print(f"Ajouté à la file d'attente: {absolute_link}")
-                    
-            save_json_file('data/queue.json', queue)
 
 # Fonction pour démarrer le crawling
 def crawler(start_url=None):
@@ -125,7 +88,12 @@ def crawler(start_url=None):
         queue.append(start_url)
     while queue:
         url = queue.pop(0)
-        process_url(url)
+        try:
+            process_url(url, get_current_info_file(metadata))
+        except requests.exceptions.RequestException as e:
+            logError(e, f"Error fectching URL {url}")
+        except Exception as e:
+            logError(e, f"Error fectching URL {url}")
         save_json_file('data/queue.json', queue)
 
 # Interface graphique avec Tkinter
@@ -256,6 +224,7 @@ class CrawlerApp:
         visited = []
         metadata = {"count": 0, "file_index": 1}
         webpages = {}
+        current_info_file = get_current_info_file(metadata)
         save_json_file('data/queue.json', queue)
         save_json_file('data/visited.json', visited)
         save_json_file('data/metadata.json', metadata)
@@ -264,9 +233,11 @@ class CrawlerApp:
 
 # Fonction principale pour lancer l'application
 def main():
+    initiate()
     root = tk.Tk()
     app = CrawlerApp(root)
     root.mainloop()
+    
 
 if __name__ == "__main__":
     main()
